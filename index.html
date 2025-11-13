@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Home • BlogSpace</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- ✅ Styles -->
+    <link rel="stylesheet" href="/css/main.css">
+    <link rel="stylesheet" href="/css/popup.css">
+    <link rel="stylesheet" href="/css/index.css">
+    <script src="/js/popup.js"></script>
+     <script src="/js/navbar.js"></script>
+
+</head>
+
+<body>
+
+    <!-- ✅ NAVBAR -->
+    <header class="topbar">
+        <div class="brand">BlogSpace</div>
+
+        <nav class="menu">
+            <a class="link" href="/index.html">Home</a>
+            <a class="link" href="/category.html?name=Technology">Tech</a>
+            <a class="link" href="/category.html?name=Travel">Travel</a>
+            <a class="link" href="/category.html?name=Environment">Environment</a>
+            <span id="authLinks"></span>
+        </nav>
+    </header>
+
+    <!-- ✅ SEARCH BAR -->
+    <section class="search-area">
+        <input type="text" id="searchBox" class="search-box" placeholder="Search blogs by title or category...">
+    </section>
+
+    <!-- ✅ BLOG LIST -->
+    <main id="blogContainer" style="max-width: 1100px; margin: 30px auto; padding: 0 20px;">
+        <div id="blogList" class="grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 20px;"></div>
+        <p id="emptyMsg" style="text-align:center; color:#6b7280; margin-top:25px; display:none;">No blogs available.</p>
+    </main>
+
+    <!-- ✅ POPUP HANDLER -->
+    <script src="/js/popup.js"></script>
+
+    <!-- ✅ MAIN SCRIPT -->
+    <script>
+        
+        //  Verify Login Before Showing Blogs
+        // -----------------------------------------------------------
+        document.addEventListener("DOMContentLoaded", () =>
+        {
+            const token = localStorage.getItem("token");
+            const user  = JSON.parse(localStorage.getItem("user") || "{}");
+
+            if (!token || !user.id)
+            {
+                showPopup("Please login to view blogs.", "error");
+                setTimeout(() => location.href = "/login.html", 1000);
+                return;
+            }
+
+            updateNavbar();
+            loadBlogs();
+        });
+
+        // -----------------------------------------------------------
+        //  Load All Blogs 
+        // -----------------------------------------------------------
+        async function loadBlogs()
+        {
+            const token = localStorage.getItem("token");
+            const list  = document.getElementById("blogList");
+            const empty = document.getElementById("emptyMsg");
+
+            list.innerHTML = "<p style='text-align:center;'>Loading blogs...</p>";
+            empty.style.display = "none";
+
+            try
+            {
+                const res = await fetch("http://localhost:4000/blogs",
+                {
+                    headers: { "authorization": token }
+                });
+
+                if (res.status === 401 || res.status === 403)
+                {
+                    localStorage.removeItem("token");
+                    localStorage.removeItem("user");
+                    showPopup("Session expired. Please log in again.", "error");
+                    setTimeout(() => location.href = "/login.html", 1200);
+                    return;
+                }
+
+                const blogs = await res.json();
+
+                if (!Array.isArray(blogs) || blogs.length === 0)
+                {
+                    list.innerHTML = "";
+                    empty.style.display = "block";
+                    return;
+                }
+
+                list.innerHTML = "";
+                blogs.forEach(blog =>
+                {
+                    const img = blog.image_path ? `/uploads/${blog.image_path}` : "/uploads/placeholder.jpg";
+
+                    const card = `
+                        <div class="card fadeIn" style="background:white; border-radius:12px; padding:12px; box-shadow:0 2px 8px rgba(0,0,0,.08); border:1px solid #e5e7eb;">
+                            <img src="${img}" alt="Blog image" style="width:100%; height:180px; object-fit:cover; border-radius:10px; margin-bottom:10px;">
+                            <div class="title" style="font-weight:600; font-size:18px; color:#111827;">${blog.title}</div>
+                            <div class="meta" style="color:#6b7280; font-size:14px; margin-bottom:12px;">
+                                ${blog.category} • by ${blog.first_name || "Unknown"}
+                            </div>
+                            <button class="btn primary open-blog" onclick="openBlog(${blog.id})">Read More</button>
+                        </div>
+                    `;
+
+                    list.insertAdjacentHTML("beforeend", card);
+                });
+            }
+            catch (err)
+            {
+                console.error("❌ Error fetching blogs:", err);
+                list.innerHTML = "<p style='text-align:center; color:red;'>Server error. Please try again later.</p>";
+            }
+        }
+
+        // -----------------------------------------------------------
+        //  Blog Navigation
+        // -----------------------------------------------------------
+        function openBlog(id)
+        {
+            if (!id) return;
+            location.href = `/view.html?id=${id}`;
+        }
+
+        // -----------------------------------------------------------
+        //  Navbar Controls 
+        // -----------------------------------------------------------
+        function updateNavbar()
+        {
+            const area = document.getElementById("authLinks");
+            const token = localStorage.getItem("token");
+            const saved = localStorage.getItem("user");
+            const user = saved ? JSON.parse(saved) : null;
+
+            if (!token || !user)
+            {
+                area.innerHTML = `
+                    <a class="link" href="/login.html">Login</a>
+                    <a class="link" href="/register.html">Register</a>
+                `;
+                return;
+            }
+
+            area.innerHTML = `
+                <span class="link" style="background:#d1fae5;color:#065f46;font-weight:600;">
+                    Hi, ${user.first_name}
+                </span>
+                ${user.role === "creator" ? `<a class="link" href="/compose.html">Compose</a>` : ""}
+                <a class="link" href="/favourites.html">Favourites</a>
+                <a class="link" href="#" id="logoutBtn">Logout</a>
+            `;
+
+            const logoutBtn = document.getElementById("logoutBtn");
+            if (logoutBtn)
+            {
+                logoutBtn.addEventListener("click", logout);
+            }
+        }
+
+        function logout()
+        {
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+
+            showPopup("Logged out successfully.", "info");
+
+            setTimeout(() =>
+            {
+                location.href = "/index.html";
+            }, 1000);
+        }
+
+        // -----------------------------------------------------------
+        //  Search Functionality
+        // -----------------------------------------------------------
+        document.getElementById("searchBox").addEventListener("input", function ()
+        {
+            const q = this.value.toLowerCase().trim();
+            const cards = document.querySelectorAll("#blogList .card");
+
+            cards.forEach(card =>
+            {
+                const title = card.querySelector(".title").textContent.toLowerCase();
+                const meta  = card.querySelector(".meta").textContent.toLowerCase();
+                card.style.display = (title.includes(q) || meta.includes(q)) ? "block" : "none";
+            });
+        });
+    </script>
+
+    <!--  Animation -->
+    <style>
+        .fadeIn
+        {
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn
+        {
+            from { opacity: 0; transform: translateY(15px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+
+</body>
+</html>
